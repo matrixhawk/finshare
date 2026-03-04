@@ -146,6 +146,36 @@ if results:
         logger.info(f"  {symbol}: 涨跌幅 {change:+.2f}%")
 ```
 
+### 批量获取实时快照
+
+```python
+from finshare import get_data_manager, logger
+
+manager = get_data_manager()
+
+# 支持股票、ETF、LOF 等多种类型
+symbols = [
+    "000001",  # 股票：平安银行
+    "600519",  # 股票：贵州茅台
+    "510300",  # ETF：沪深300ETF
+    "159915",  # ETF：创业板ETF
+    "163402",  # LOF：兴全趋势
+]
+
+# 使用批量接口获取快照（更高效）
+results = manager.get_batch_snapshots(symbols)
+
+# 展示实时行情
+if results:
+    logger.info(f"成功获取 {len(results)} 只股票的快照")
+    for symbol, snapshot in results.items():
+        change_percent = 0.0
+        if snapshot.prev_close and snapshot.prev_close > 0:
+            change_percent = (snapshot.last_price - snapshot.prev_close) / snapshot.prev_close * 100
+        logger.info(f"{symbol}: {snapshot.last_price:.2f} ({change_percent:+.2f}%)")
+```
+```
+
 ### 使用特定数据源
 
 ```python
