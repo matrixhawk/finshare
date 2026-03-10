@@ -42,8 +42,8 @@ jobs:
     - name: Determine version
       id: version
       run: |
-        # 读取当前版本
-        CURRENT_VERSION=$(python -c "import sys; sys.path.insert(0, 'finshare'); from __version__ import __version__; print(__version__)")
+        # 直接从文件读取版本号 (兼容 macOS 和 Linux)
+        CURRENT_VERSION=$(grep '__version__' finshare/__version__.py | sed 's/.*"\(.*\)".*/\1/')
         echo "Current version: $CURRENT_VERSION"
 
         # 如果手动指定了版本号
@@ -76,10 +76,17 @@ jobs:
         echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
         echo "Final version: $NEW_VERSION"
 
-    - name: Update version file
+    - name: Update version files
       run: |
-        sed -i 's/__version__ = ".*"/__version__ = "${{ steps.version.outputs.version }}"/' finshare/__version__.py
+        # 更新 finshare/__version__.py
+        sed -i "s/__version__ = \".*\"/__version__ = \"${{ steps.version.outputs.version }}\"/" finshare/__version__.py
+
+        # 更新 pyproject.toml
+        sed -i "s/version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+
         cat finshare/__version__.py
+        echo "---"
+        grep "^version" pyproject.toml
 
     - name: Build package
       run: python -m build
