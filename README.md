@@ -238,6 +238,7 @@ if __name__ == '__main__':
 |------|------|
 | [finboard](https://github.com/finvfamily/finboard) | 实时行情看板 |
 | [finscreener](https://github.com/finvfamily/finscreener) | 智能选股器 |
+| [finshare-skills](https://github.com/finvfamily/finshare-skills) | OpenClaw AI 助手技能 |
 | [meepoquant](https://meepoquant.com) | 免费量化回测平台 |
 
 ## 🤝 贡献
