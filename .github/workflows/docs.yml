@@ -32,7 +32,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install sphinx sphinx-rtd-theme
+          pip install sphinx sphinx-rtd-theme myst-parser
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
