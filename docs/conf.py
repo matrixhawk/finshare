@@ -27,7 +27,7 @@ html_theme_options = {
     'prev_next_buttons_location': 'both',
     'style_external_links': False,
     'style_nav_header_background': '#2980b9',
-    'collapse_navigation': True,
+    'collapse_navigation': False,
     'sticky_navigation': True,
     'navigation_depth': 4,
     'includehidden': True,
