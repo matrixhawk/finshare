@@ -1,0 +1,1 @@
+# finshare stock module
