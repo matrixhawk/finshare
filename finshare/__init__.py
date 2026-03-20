@@ -501,6 +501,131 @@ def get_future_list():
     return _get_future_list()
 
 
+# 指数数据 (延迟导入)
+_get_index_constituents = None
+_get_index_pe = None
+_get_index_pb = None
+
+
+def _lazy_import_index():
+    global _get_index_constituents, _get_index_pe, _get_index_pb
+    if _get_index_constituents is None:
+        from finshare.stock.index import constituent, valuation
+        _get_index_constituents = constituent.get_index_constituents
+        _get_index_pe = valuation.get_index_pe
+        _get_index_pb = valuation.get_index_pb
+
+
+def get_index_constituents(index_code: str):
+    """获取指数成分股"""
+    _lazy_import_index()
+    return _get_index_constituents(index_code)
+
+
+def get_index_pe(symbol: str):
+    """获取指数PE历史"""
+    _lazy_import_index()
+    return _get_index_pe(symbol)
+
+
+def get_index_pb(symbol: str):
+    """获取指数PB历史"""
+    _lazy_import_index()
+    return _get_index_pb(symbol)
+
+
+# 行业数据 (延迟导入)
+_get_industry_list = None
+_get_industry_constituents = None
+_get_sw_industry_list = None
+_get_sw_industry_constituents = None
+_get_sw_industry_analysis = None
+
+
+def _lazy_import_industry():
+    global _get_industry_list, _get_industry_constituents
+    global _get_sw_industry_list, _get_sw_industry_constituents
+    global _get_sw_industry_analysis
+    if _get_industry_list is None:
+        from finshare.stock.industry import classification, analysis
+        _get_industry_list = classification.get_industry_list
+        _get_industry_constituents = classification.get_industry_constituents
+        _get_sw_industry_list = classification.get_sw_industry_list
+        _get_sw_industry_constituents = classification.get_sw_industry_constituents
+        _get_sw_industry_analysis = analysis.get_sw_industry_analysis
+
+
+def get_industry_list():
+    """获取东财行业板块列表"""
+    _lazy_import_industry()
+    return _get_industry_list()
+
+
+def get_industry_constituents(board_name: str):
+    """获取东财行业成分股"""
+    _lazy_import_industry()
+    return _get_industry_constituents(board_name)
+
+
+def get_sw_industry_list(level: int = 3):
+    """获取申万行业分类列表"""
+    _lazy_import_industry()
+    return _get_sw_industry_list(level)
+
+
+def get_sw_industry_constituents(industry_code: str):
+    """获取申万行业成分股"""
+    _lazy_import_industry()
+    return _get_sw_industry_constituents(industry_code)
+
+
+def get_sw_industry_analysis(start_date=None, end_date=None, level=1):
+    """获取申万行业日度分析"""
+    _lazy_import_industry()
+    return _get_sw_industry_analysis(start_date, end_date, level)
+
+
+# 市场估值 (延迟导入)
+_get_market_pb = None
+_get_global_index_daily = None
+_get_stock_spot = None
+_get_etf_classification = None
+
+
+def _lazy_import_valuation():
+    global _get_market_pb, _get_global_index_daily, _get_stock_spot, _get_etf_classification
+    if _get_market_pb is None:
+        from finshare.stock.valuation import market
+        _get_market_pb = market.get_market_pb
+        _get_global_index_daily = market.get_global_index_daily
+        _get_stock_spot = market.get_stock_spot
+        _get_etf_classification = market.get_etf_classification
+
+
+def get_market_pb():
+    """获取A股全市场PB中位数历史"""
+    _lazy_import_valuation()
+    return _get_market_pb()
+
+
+def get_global_index_daily(symbol: str):
+    """获取全球指数日线（美股/港股）"""
+    _lazy_import_valuation()
+    return _get_global_index_daily(symbol)
+
+
+def get_stock_spot():
+    """获取A股全量实时行情"""
+    _lazy_import_valuation()
+    return _get_stock_spot()
+
+
+def get_etf_classification():
+    """获取ETF基金分类"""
+    _lazy_import_valuation()
+    return _get_etf_classification()
+
+
 # 工具函数
 from finshare.utils import (  # noqa: E402
     validate_stock_code,
@@ -610,6 +735,21 @@ __all__ = [
     "get_etf_list",
     "get_lof_list",
     "get_future_list",
+    # 指数数据
+    "get_index_constituents",
+    "get_index_pe",
+    "get_index_pb",
+    # 行业数据
+    "get_industry_list",
+    "get_industry_constituents",
+    "get_sw_industry_list",
+    "get_sw_industry_constituents",
+    "get_sw_industry_analysis",
+    # 市场估值
+    "get_market_pb",
+    "get_global_index_daily",
+    "get_stock_spot",
+    "get_etf_classification",
     # 工具函数
     "validate_stock_code",
     "validate_date",
