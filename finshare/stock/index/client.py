@@ -35,6 +35,10 @@ class IndexClient(BaseClient):
     LG_PE_URL = "https://legulegu.com/api/stockdata/index-pe"
     LG_PB_URL = "https://legulegu.com/api/stockdata/index-pb"
 
+    # Cache TTLs (seconds)
+    TTL_CONSTITUENTS = 86400  # 24h — quarterly rebalance
+    TTL_VALUATION = 3600       # 1h  — daily update
+
     def __init__(self):
         super().__init__("eastmoney_index")
 
@@ -80,24 +84,12 @@ class IndexClient(BaseClient):
         return None
 
     # ------------------------------------------------------------------
-    # Public methods
+    # Private fetch methods
     # ------------------------------------------------------------------
 
-    def get_index_constituents(self, index_code: str) -> pd.DataFrame:
-        """
-        获取指数成分股列表（东方财富 API）。
-
-        Args:
-            index_code: 指数代码，如 "000300"
-
-        Returns:
-            DataFrame 包含列:
-            - fs_code: 股票代码，格式 "000001.SZ"
-            - name: 股票简称
-        """
-        empty = pd.DataFrame(columns=["fs_code", "name"])
+    def _fetch_index_constituents(self, index_code: str) -> Optional[pd.DataFrame]:
+        """从东方财富获取指数成分股"""
         secid = self._to_secid(index_code)
-
         logger.debug(f"获取指数成分股: {index_code} (secid={secid})")
 
         params = {
@@ -106,54 +98,67 @@ class IndexClient(BaseClient):
             "pz": 10000,
         }
         headers = {"Referer": "https://quote.eastmoney.com/"}
-
         data = self._make_request(self.CLIST_URL, params=params, headers=headers)
 
         if not data:
-            return empty
+            return None
 
         try:
             data_obj = data.get("data") or {}
             diff = data_obj.get("diff", []) if isinstance(data_obj, dict) else []
-
             if not diff:
                 logger.warning(f"[eastmoney_index] 成分股列表为空: {index_code}")
-                return empty
+                return None
 
             records = []
             for item in diff:
                 raw_code = str(item.get("f12", ""))
                 name = item.get("f14", "")
-                # Convert to fs_code format (000001.SZ)
                 fs_code = self._ensure_full_code(raw_code)
                 records.append({"fs_code": fs_code, "name": name})
 
             df = pd.DataFrame(records)
             logger.info(f"获取指数成分股成功: {index_code}, {len(df)}只")
             return df
-
         except Exception as e:
             logger.error(f"解析指数成分股失败: {e}")
-            return empty
+            return None
 
-    def get_index_pe(self, symbol: str) -> pd.DataFrame:
-        """
-        获取指数 PE 历史（乐估乐股 API）。
+    def _fetch_index_constituents_csindex(self, index_code: str) -> Optional[pd.DataFrame]:
+        """备用源：中证指数官网获取成分股"""
+        headers = {
+            "Referer": "https://www.csindex.com.cn/",
+            "User-Agent": self.get_random_user_agent(),
+        }
+        try:
+            response = self.session.get(
+                f"https://www.csindex.com.cn/csindex-home/index-info/index-stocks?indexCode={index_code}",
+                headers=headers, timeout=15
+            )
+            if response.status_code != 200:
+                return None
+            data = response.json()
+            items = data.get("data", [])
+            if not items:
+                return None
+            records = []
+            for item in items:
+                code = str(item.get("securityCode", ""))
+                name = item.get("securityNameAbbr", "")
+                fs_code = self._ensure_full_code(code)
+                records.append({"fs_code": fs_code, "name": name})
+            df = pd.DataFrame(records)
+            logger.info(f"CSIndex 备用源获取成分股成功: {index_code}, {len(df)}只")
+            return df
+        except Exception as e:
+            logger.warning(f"CSIndex 备用源失败: {e}")
+            return None
 
-        Args:
-            symbol: 指数中文名（如 "沪深300"）或代码（如 "000300"）
-
-        Returns:
-            DataFrame 包含列:
-            - date: 日期 (datetime)
-            - index_val: 指数点位
-            - pe: 静态PE
-            - pe_ttm: 滚动PE
-        """
-        empty = pd.DataFrame(columns=["date", "index_val", "pe", "pe_ttm"])
+    def _fetch_index_pe(self, symbol: str) -> Optional[pd.DataFrame]:
+        """从乐估乐股获取指数 PE 历史"""
         lg_symbol = self._resolve_lg_symbol(symbol)
         if not lg_symbol:
-            return empty
+            return None
 
         logger.debug(f"获取指数PE: {symbol} -> {lg_symbol}")
 
@@ -163,14 +168,14 @@ class IndexClient(BaseClient):
         data = self._make_request(self.LG_PE_URL, params=params, headers=headers)
 
         if not data:
-            return empty
+            return None
 
         try:
             items = data if isinstance(data, list) else data.get("data", [])
 
             if not items:
                 logger.warning(f"[eastmoney_index] PE 数据为空: {symbol}")
-                return empty
+                return None
 
             records = []
             for item in items:
@@ -187,25 +192,13 @@ class IndexClient(BaseClient):
 
         except Exception as e:
             logger.error(f"解析指数PE失败: {e}")
-            return empty
+            return None
 
-    def get_index_pb(self, symbol: str) -> pd.DataFrame:
-        """
-        获取指数 PB 历史（乐估乐股 API）。
-
-        Args:
-            symbol: 指数中文名（如 "沪深300"）或代码（如 "000300"）
-
-        Returns:
-            DataFrame 包含列:
-            - date: 日期 (datetime)
-            - index_val: 指数点位
-            - pb: 市净率
-        """
-        empty = pd.DataFrame(columns=["date", "index_val", "pb"])
+    def _fetch_index_pb(self, symbol: str) -> Optional[pd.DataFrame]:
+        """从乐估乐股获取指数 PB 历史"""
         lg_symbol = self._resolve_lg_symbol(symbol)
         if not lg_symbol:
-            return empty
+            return None
 
         logger.debug(f"获取指数PB: {symbol} -> {lg_symbol}")
 
@@ -215,14 +208,14 @@ class IndexClient(BaseClient):
         data = self._make_request(self.LG_PB_URL, params=params, headers=headers)
 
         if not data:
-            return empty
+            return None
 
         try:
             items = data if isinstance(data, list) else data.get("data", [])
 
             if not items:
                 logger.warning(f"[eastmoney_index] PB 数据为空: {symbol}")
-                return empty
+                return None
 
             records = []
             for item in items:
@@ -238,4 +231,43 @@ class IndexClient(BaseClient):
 
         except Exception as e:
             logger.error(f"解析指数PB失败: {e}")
-            return empty
+            return None
+
+    # ------------------------------------------------------------------
+    # Public methods
+    # ------------------------------------------------------------------
+
+    def get_index_constituents(self, index_code: str) -> pd.DataFrame:
+        """获取指数成分股列表（带缓存 + CSIndex 备用源）"""
+        cache_key = f"index_cons:{index_code}"
+        result = self._cached_request(
+            cache_key, self.TTL_CONSTITUENTS,
+            lambda: self._fetch_index_constituents(index_code)
+        )
+        if result is None:
+            # Backup: CSIndex
+            logger.warning(f"东财指数成分股失败，尝试中证指数备用源: {index_code}")
+            backup = self._fetch_index_constituents_csindex(index_code)
+            if backup is not None and not backup.empty:
+                self._cache.set(cache_key, backup, ttl=30)
+                return backup
+            return pd.DataFrame(columns=["fs_code", "name"])
+        return result
+
+    def get_index_pe(self, symbol: str) -> pd.DataFrame:
+        """获取指数 PE 历史（带缓存）"""
+        cache_key = f"index_pe:{symbol}"
+        result = self._cached_request(
+            cache_key, self.TTL_VALUATION,
+            lambda: self._fetch_index_pe(symbol)
+        )
+        return result if result is not None else pd.DataFrame(columns=["date", "index_val", "pe", "pe_ttm"])
+
+    def get_index_pb(self, symbol: str) -> pd.DataFrame:
+        """获取指数 PB 历史（带缓存）"""
+        cache_key = f"index_pb:{symbol}"
+        result = self._cached_request(
+            cache_key, self.TTL_VALUATION,
+            lambda: self._fetch_index_pb(symbol)
+        )
+        return result if result is not None else pd.DataFrame(columns=["date", "index_val", "pb"])
