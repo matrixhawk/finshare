@@ -106,6 +106,8 @@ class IndexClient(BaseClient):
         try:
             data_obj = data.get("data") or {}
             diff = data_obj.get("diff", []) if isinstance(data_obj, dict) else []
+            if isinstance(diff, dict):
+                diff = list(diff.values())
             if not diff:
                 logger.warning(f"[eastmoney_index] 成分股列表为空: {index_code}")
                 return None

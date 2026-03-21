@@ -94,6 +94,8 @@ class IndustryClient(BaseClient):
         try:
             data_obj = data.get("data") or {}
             diff = data_obj.get("diff", []) if isinstance(data_obj, dict) else []
+            if isinstance(diff, dict):
+                diff = list(diff.values())
 
             if not diff:
                 return empty
@@ -128,6 +130,8 @@ class IndustryClient(BaseClient):
         try:
             data_obj = data.get("data") or {}
             diff = data_obj.get("diff", []) if isinstance(data_obj, dict) else []
+            if isinstance(diff, dict):
+                diff = list(diff.values())
 
             if not diff:
                 return empty

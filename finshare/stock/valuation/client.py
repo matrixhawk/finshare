@@ -243,6 +243,8 @@ class ValuationClient(BaseClient):
         try:
             data_obj = data.get("data") or {}
             diff = data_obj.get("diff", []) if isinstance(data_obj, dict) else []
+            if isinstance(diff, dict):
+                diff = list(diff.values())
             if not diff:
                 logger.warning("[valuation] 全量行情数据为空")
                 return None
@@ -368,6 +370,8 @@ class ValuationClient(BaseClient):
         try:
             data_obj = data.get("data") or {}
             diff = data_obj.get("diff", []) if isinstance(data_obj, dict) else []
+            if isinstance(diff, dict):
+                diff = list(diff.values())
 
             if not diff:
                 logger.warning("[valuation] ETF分类数据为空")
