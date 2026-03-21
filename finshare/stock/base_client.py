@@ -105,12 +105,14 @@ class BaseClient:
             )
             self._cooldown_mgr.record_success(self.source_name)
             return result
-        except Exception as e:
+        except (requests.RequestException, ValueError) as e:
             http_status = getattr(getattr(e, "response", None), "status_code", None)
-            error_type = self._classify_error(str(e), http_status)
-            self._cooldown_mgr.record_failure(
-                self.source_name, error_type, http_status
-            )
+            # 429/403/503 already recorded by _do_request, skip to avoid double counting
+            if http_status not in (429, 403, 503):
+                error_type = self._classify_error(str(e), http_status)
+                self._cooldown_mgr.record_failure(
+                    self.source_name, error_type, http_status
+                )
             return None
 
     def _do_request(
