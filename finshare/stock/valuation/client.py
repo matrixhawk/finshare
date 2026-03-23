@@ -11,16 +11,26 @@ from finshare.logger import logger
 
 
 GLOBAL_INDEX_MAP = {
-    ".DJI": "100.DJIA", ".IXIC": "100.NDX", ".INX": "100.SPX",
-    "DJI": "100.DJIA", "IXIC": "100.NDX", "SPX": "100.SPX",
-    "HSI": "100.HSI", "HSTECH": "100.HSTECH", "HSCEI": "100.HSCEI",
+    # 美股三大指数
+    ".DJI": "100.DJIA", "DJI": "100.DJIA",       # 道琼斯工业平均
+    ".IXIC": "100.NDX", "IXIC": "100.NDX",        # 纳斯达克
+    ".INX": "100.SPX", "SPX": "100.SPX",           # 标普500
+    # 港股指数
+    "HSI": "100.HSI",                              # 恒生指数
+    "HSCEI": "100.HSCEI",                          # 恒生国企指数
+    # 欧洲指数
+    "FTSE": "100.FTSE",                            # 富时100
+    "DAX": "100.GDAXI",                            # 德国DAX30
+    # 亚太指数
+    "N225": "100.N225",                             # 日经225
+    "KOSPI": "100.KS11",                            # 韩国综合指数
 }
 
 
 class ValuationClient(BaseClient):
     """全市场PB + 全球指数 + 全量行情 + ETF分类客户端"""
 
-    LG_MARKET_PB_URL = "https://legulegu.com/api/stockdata/market-pb"
+    CSINDEX_PERF_URL = "https://www.csindex.com.cn/csindex-home/perf/index-perf"
     KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
     CLIST_URL = "https://push2.eastmoney.com/api/qt/clist/get"
     SINA_HQ_URL = "https://hq.sinajs.cn/list="
@@ -138,12 +148,26 @@ class ValuationClient(BaseClient):
     # ------------------------------------------------------------------
 
     def _fetch_market_pb(self):
-        """从乐估乐股获取全市场PB中位数历史"""
-        params = {"token": ""}
-        headers = {"Referer": "https://legulegu.com/stockdata/market-pb"}
+        """
+        获取全市场估值历史（使用中证全指 000985 行情+PE 作为替代）。
 
-        logger.debug("获取A股全市场PB中位数历史")
-        data = self._make_request(self.LG_MARKET_PB_URL, params=params, headers=headers)
+        注意: 原乐估乐股API已失效 (404)。中证指数官网免费API不提供PB，
+        这里返回中证全指的 PE 作为全市场估值参考。
+        middlePB 字段设为 None，close 使用中证全指收盘价。
+        """
+        import datetime as dt
+
+        logger.debug("获取全市场估值历史 (CSIndex 中证全指)")
+
+        end_date = dt.date.today().strftime("%Y%m%d")
+        params = {
+            "indexCode": "000985",  # 中证全指
+            "startDate": "20100101",
+            "endDate": end_date,
+        }
+        headers = {"Referer": "https://www.csindex.com.cn/"}
+
+        data = self._make_request(self.CSINDEX_PERF_URL, params=params, headers=headers)
 
         if not data:
             return None
@@ -152,28 +176,30 @@ class ValuationClient(BaseClient):
             items = data.get("data", []) if isinstance(data, dict) else data
 
             if not items:
-                logger.warning("[valuation] 全市场PB数据为空")
+                logger.warning("[valuation] CSIndex 中证全指数据为空")
                 return None
 
             records = []
             for item in items:
-                ts = item.get("date")
-                if ts is not None:
-                    date_str = pd.to_datetime(ts, unit="ms").strftime("%Y-%m-%d")
+                trade_date = str(item.get("tradeDate", ""))
+                if len(trade_date) == 8:
+                    date_str = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
                 else:
-                    date_str = None
+                    date_str = trade_date
+
                 records.append({
                     "date": date_str,
-                    "middlePB": item.get("middlePB"),
-                    "quantileInRecent10YearsMiddlePB": item.get("quantileInRecent10YearsMiddlePB"),
+                    "middlePB": None,  # CSIndex不提供PB
+                    "quantileInRecent10YearsMiddlePB": None,
                     "close": item.get("close"),
+                    "pe": item.get("peg"),  # 额外提供PE数据
                 })
 
             df = pd.DataFrame(records)
-            logger.info(f"获取全市场PB成功: {len(df)}条")
+            logger.info(f"获取全市场估值成功: {len(df)}条 (CSIndex 中证全指)")
             return df
         except Exception as e:
-            logger.error(f"[valuation] 解析全市场PB失败: {e}")
+            logger.error(f"[valuation] 解析全市场估值失败: {e}")
             return None
 
     def _fetch_global_index_daily(self, secid: str, symbol: str):
