@@ -694,25 +694,30 @@ class EastMoneyDataSource(BaseDataSource):
         """
         try:
             # 东方财富股票列表API
-            url = "http://28.push2.eastmoney.com/api/qt/clist/get"
+            url = "https://82.push2.eastmoney.com/api/qt/clist/get"
 
-            # 确定市场参数
+            # 确定市场参数（对标 akshare stock_zh_a_spot_em）
             if market == "sh":
-                fs_param = "m:1+t:23,m:1+t:80"  # 上海主板
+                fs_param = "m:1 t:2,m:1 t:23"  # 上海
             elif market == "sz":
-                fs_param = "m:0+t:6,m:0+t:80"  # 深圳主板
+                fs_param = "m:0 t:6,m:0 t:80"  # 深圳
             else:
-                fs_param = "m:0+t:6,m:0+t:80,m:1+t:23,m:1+t:80"  # 全部
+                # 全部：沪深+北交所
+                fs_param = "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048"
 
-            # 获取所有数据（分页获取）
+            # 分页获取（对标 akshare fetch_paginated_data）
+            import math
+            import time as _time
+            import random as _random
             all_stocks = []
             page = 1
-            page_size = 5000  # 每次最多获取5000条
+            page_size = 100
+            total = None
 
             while True:
                 params = {
-                    "pn": page,
-                    "pz": page_size,
+                    "pn": str(page),
+                    "pz": str(page_size),
                     "po": 1,
                     "np": 1,
                     "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -728,6 +733,12 @@ class EastMoneyDataSource(BaseDataSource):
                 if not response_data:
                     break
 
+                # 从首次响应获取总数
+                if total is None and isinstance(response_data, dict):
+                    data_section = response_data.get("data", {})
+                    if data_section:
+                        total = data_section.get("total", 0)
+
                 stocks = self._parse_stock_list(response_data)
                 if not stocks:
                     break
@@ -739,11 +750,16 @@ class EastMoneyDataSource(BaseDataSource):
                     all_stocks = all_stocks[:limit]
                     break
 
-                # 如果返回数据少于page_size，说明已经是最后一页
+                # 用 total 判断是否取完
+                if total and len(all_stocks) >= total:
+                    break
+
+                # 兜底：返回数量少于 page_size 则为最后一页
                 if len(stocks) < page_size:
                     break
 
                 page += 1
+                _time.sleep(_random.uniform(0.3, 0.8))  # 避免请求过于频繁
 
             logger.info(f"获取股票列表成功: {len(all_stocks)} 只")
             return all_stocks
@@ -763,17 +779,19 @@ class EastMoneyDataSource(BaseDataSource):
             ETF列表，每只ETF包含代码、名称等信息
         """
         try:
-            url = "http://28.push2.eastmoney.com/api/qt/clist/get"
+            url = "https://82.push2.eastmoney.com/api/qt/clist/get"
 
-            # 获取所有数据（分页获取）
+            import time as _time
+            import random as _random
             all_etfs = []
             page = 1
-            page_size = 5000
+            page_size = 100
+            total = None
 
             while True:
                 params = {
-                    "pn": page,
-                    "pz": page_size,
+                    "pn": str(page),
+                    "pz": str(page_size),
                     "po": 1,
                     "np": 1,
                     "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -789,6 +807,11 @@ class EastMoneyDataSource(BaseDataSource):
                 if not response_data:
                     break
 
+                if total is None and isinstance(response_data, dict):
+                    data_section = response_data.get("data", {})
+                    if data_section:
+                        total = data_section.get("total", 0)
+
                 etfs = self._parse_stock_list(response_data)
                 if not etfs:
                     break
@@ -799,10 +822,14 @@ class EastMoneyDataSource(BaseDataSource):
                     all_etfs = all_etfs[:limit]
                     break
 
+                if total and len(all_etfs) >= total:
+                    break
+
                 if len(etfs) < page_size:
                     break
 
                 page += 1
+                _time.sleep(_random.uniform(0.3, 0.8))
 
             logger.info(f"获取ETF列表成功: {len(all_etfs)} 只")
             return all_etfs
@@ -822,17 +849,19 @@ class EastMoneyDataSource(BaseDataSource):
             LOF列表，每只LOF包含代码、名称等信息
         """
         try:
-            url = "http://28.push2.eastmoney.com/api/qt/clist/get"
+            url = "https://82.push2.eastmoney.com/api/qt/clist/get"
 
-            # 获取所有数据（分页获取）
+            import time as _time
+            import random as _random
             all_lofs = []
             page = 1
-            page_size = 5000
+            page_size = 100
+            total = None
 
             while True:
                 params = {
-                    "pn": page,
-                    "pz": page_size,
+                    "pn": str(page),
+                    "pz": str(page_size),
                     "po": 1,
                     "np": 1,
                     "ut": "bd1d9ddb04089700cf9c27f6f7426281",
@@ -848,6 +877,11 @@ class EastMoneyDataSource(BaseDataSource):
                 if not response_data:
                     break
 
+                if total is None and isinstance(response_data, dict):
+                    data_section = response_data.get("data", {})
+                    if data_section:
+                        total = data_section.get("total", 0)
+
                 lofs = self._parse_stock_list(response_data)
                 if not lofs:
                     break
@@ -858,10 +892,14 @@ class EastMoneyDataSource(BaseDataSource):
                     all_lofs = all_lofs[:limit]
                     break
 
+                if total and len(all_lofs) >= total:
+                    break
+
                 if len(lofs) < page_size:
                     break
 
                 page += 1
+                _time.sleep(_random.uniform(0.3, 0.8))
 
             logger.info(f"获取LOF列表成功: {len(all_lofs)} 只")
             return all_lofs
