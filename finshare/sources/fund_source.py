@@ -87,26 +87,80 @@ class FundDataSource(BaseDataSource):
         """
         获取基金基本信息
 
+        使用天天基金 pingzhongdata JS 接口解析基金名称等信息。
+
         Args:
             code: 基金代码
 
         Returns:
-            基金信息字典
+            基金信息字典，包含 code, name 等字段
         """
+        import re
+
         try:
             fund_code = self._format_fund_code(code)
 
-            # 东方财富基金信息API
-            url = f"{self.eastmoney_base_url}/jjj/{fund_code}.html"
+            url = f"{self.eastmoney_base_url}/pingzhongdata/{fund_code}.js"
+            params = {"v": datetime.now().strftime("%Y%m%d%H%M%S")}
 
-            response_data = self._make_request(url)
+            response_data = self._make_request(url, params)
 
             if not response_data:
                 return None
 
-            # 解析基金信息
-            info = self._parse_fund_info(response_data, fund_code)
+            # response_data 可能是文本（JS内容），需要提取变量
+            text = response_data if isinstance(response_data, str) else str(response_data)
 
+            info = {"code": fund_code}
+
+            # 提取 JS 变量值的辅助函数
+            def extract_js_var(var_name: str) -> Optional[str]:
+                pattern = f'var {var_name} = '
+                if pattern in text:
+                    start = text.find(pattern) + len(pattern)
+                    end = text.find(';', start)
+                    if end != -1:
+                        val = text[start:end].strip().strip('"').strip("'")
+                        return val
+                return None
+
+            # 提取关键字段
+            name = extract_js_var("fS_name")
+            if name:
+                info["name"] = name
+
+            source_rate = extract_js_var("fund_sourceRate")
+            if source_rate:
+                info["source_rate"] = source_rate
+
+            fund_rate = extract_js_var("fund_Rate")
+            if fund_rate:
+                info["rate"] = fund_rate
+
+            min_sg = extract_js_var("fund_minsg")
+            if min_sg:
+                info["min_purchase"] = min_sg
+
+            # 提取净值趋势中的最新净值
+            nav_pattern = "var Data_netWorthTrend = "
+            if nav_pattern in text:
+                start = text.find(nav_pattern) + len(nav_pattern)
+                end = text.find(";", start)
+                if end != -1:
+                    try:
+                        data_str = text[start:end].strip()
+                        if data_str.startswith("["):
+                            data_list = json.loads(data_str)
+                            if data_list:
+                                latest = data_list[-1]
+                                info["latest_nav"] = latest.get("y")
+                                info["latest_nav_date"] = datetime.fromtimestamp(
+                                    latest.get("x", 0) / 1000
+                                ).strftime("%Y-%m-%d")
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            logger.info(f"获取基金信息成功: {fund_code}")
             return info
 
         except Exception as e:
@@ -117,36 +171,53 @@ class FundDataSource(BaseDataSource):
         """
         获取基金列表
 
+        使用天天基金 JS 接口获取全部基金代码列表。
+
         Args:
-            market: 市场类型 (all, sh, sz)
+            market: 市场类型 (all, sh, sz) - 目前返回全部
 
         Returns:
-            基金列表
+            基金列表，每项包含 code, abbr, name, type, pinyin
         """
-        try:
-            # 东方财富基金列表API
-            url = f"{self.eastmoney_base_url}/data/fund_rank_list"
+        import re
 
-            params = {
-                "m": market,
-                "dt": "net",
-                "sd": "",
-                "ed": "",
-                "qdii": "",
-                "ltfc": "true",
-                "py": "true",
-                "zq": "true",
-                "vip": "true",
+        try:
+            url = "https://fund.eastmoney.com/js/fundcode_search.js"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                "Referer": "https://fund.eastmoney.com/",
             }
 
-            response_data = self._make_request(url, params)
+            response = self.session.get(url, headers=headers, timeout=30)
 
-            if not response_data:
+            if response.status_code != 200:
+                logger.warning(f"获取基金列表失败: HTTP {response.status_code}")
                 return []
 
-            # 解析基金列表
-            fund_list = self._parse_fund_list(response_data)
+            text = response.text
 
+            # 格式: var r = [["000001","HXCZHH","华夏成长混合","混合型-灵活","HUAXIACHENGZHANGHUNHE"], ...]
+            match = re.search(r'var\s+r\s*=\s*(\[.+\])', text, re.DOTALL)
+            if not match:
+                logger.warning("获取基金列表失败: 无法解析JS变量")
+                return []
+
+            data = json.loads(match.group(1))
+
+            fund_list = []
+            for item in data:
+                if len(item) < 5:
+                    continue
+                fund = {
+                    "code": item[0],
+                    "abbr": item[1],
+                    "name": item[2],
+                    "type": item[3],
+                    "pinyin": item[4],
+                }
+                fund_list.append(fund)
+
+            logger.info(f"获取基金列表成功: {len(fund_list)}只")
             return fund_list
 
         except Exception as e:
