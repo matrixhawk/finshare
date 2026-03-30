@@ -29,7 +29,7 @@ class YahooFinanceDataSource(BaseDataSource):
     def __init__(self):
         super().__init__("yahoo")
         if not YFINANCE_AVAILABLE:
-            raise RuntimeError("yfinance 未安装，无法使用 Yahoo Finance 数据源")
+            raise ImportError("yfinance 未安装，无法使用 Yahoo Finance 数据源")
 
     def _convert_code_format(self, code: str) -> str:
         """

@@ -102,8 +102,10 @@ class DataSourceManager:
                 else:
                     logger.warning(f"数据源 {source_name} 初始化返回空")
 
+            except ImportError as e:
+                logger.debug(f"数据源 {source_name} 未安装，跳过: {e}")
             except Exception as e:
-                logger.error(f"初始化数据源 {source_name} 失败: {e}")
+                logger.warning(f"初始化数据源 {source_name} 失败: {e}")
 
         return sources
 
