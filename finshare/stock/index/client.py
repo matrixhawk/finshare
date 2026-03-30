@@ -169,6 +169,51 @@ class IndexClient(BaseClient):
             logger.warning(f"CSIndex 备用源失败: {e}")
             return None
 
+    def _fetch_index_constituents_baostock(self, index_code: str) -> Optional[pd.DataFrame]:
+        """备用源：BaoStock 获取指数成分股（支持沪深300/中证500）"""
+        try:
+            import baostock as bs
+            bs.login()
+            try:
+                query_map = {
+                    "000300": bs.query_hs300_stocks,
+                    "000905": bs.query_zz500_stocks,
+                }
+                query_fn = query_map.get(index_code)
+                if query_fn is None:
+                    logger.debug(f"[baostock] 不支持的指数成分股查询: {index_code}")
+                    return None
+
+                rs = query_fn()
+                if rs.error_code != '0':
+                    logger.warning(f"[baostock] 查询失败: {rs.error_msg}")
+                    return None
+
+                records = []
+                while rs.next():
+                    row = rs.get_row_data()
+                    # row = [updateDate, code("sh.600000"), code_name]
+                    if len(row) >= 3:
+                        raw_code = row[1]  # "sh.600000"
+                        code = raw_code.split(".")[-1] if "." in raw_code else raw_code
+                        fs_code = self._ensure_full_code(code)
+                        records.append({"fs_code": fs_code, "name": row[2]})
+
+                if not records:
+                    return None
+
+                df = pd.DataFrame(records)
+                logger.info(f"[baostock] 获取指数成分股成功: {index_code}, {len(df)}只")
+                return df
+            finally:
+                bs.logout()
+        except ImportError:
+            logger.debug("[baostock] baostock 未安装")
+            return None
+        except Exception as e:
+            logger.warning(f"[baostock] 获取指数成分股失败: {e}")
+            return None
+
     def _fetch_csindex_perf(self, index_code: str, start_date: str = "20100101") -> Optional[pd.DataFrame]:
         """
         从中证指数官网获取指数行情+PE历史数据。
@@ -262,21 +307,34 @@ class IndexClient(BaseClient):
     # ------------------------------------------------------------------
 
     def get_index_constituents(self, index_code: str) -> pd.DataFrame:
-        """获取指数成分股列表（带缓存 + CSIndex 备用源）"""
+        """获取指数成分股列表
+
+        数据源优先级: 东方财富 → 中证指数官网 → BaoStock
+        带24小时缓存 + stale fallback。
+        """
         cache_key = f"index_cons:{index_code}"
         result = self._cached_request(
             cache_key, self.TTL_CONSTITUENTS,
             lambda: self._fetch_index_constituents(index_code)
         )
-        if result is None:
-            # Backup: CSIndex
-            logger.warning(f"东财指数成分股失败，尝试中证指数备用源: {index_code}")
-            backup = self._fetch_index_constituents_csindex(index_code)
-            if backup is not None and not backup.empty:
-                self._cache.set(cache_key, backup, ttl=30)
-                return backup
-            return pd.DataFrame(columns=["fs_code", "name"])
-        return result
+        if result is not None:
+            return result
+
+        # Fallback 1: CSIndex
+        logger.warning(f"东财指数成分股失败，尝试中证指数备用源: {index_code}")
+        backup = self._fetch_index_constituents_csindex(index_code)
+        if backup is not None and not backup.empty:
+            self._cache.set(cache_key, backup, ttl=self.TTL_CONSTITUENTS)
+            return backup
+
+        # Fallback 2: BaoStock
+        logger.warning(f"中证指数备用源也失败，尝试 BaoStock: {index_code}")
+        bao = self._fetch_index_constituents_baostock(index_code)
+        if bao is not None and not bao.empty:
+            self._cache.set(cache_key, bao, ttl=self.TTL_CONSTITUENTS)
+            return bao
+
+        return pd.DataFrame(columns=["fs_code", "name"])
 
     def get_index_pe(self, symbol: str) -> pd.DataFrame:
         """获取指数 PE 历史（带缓存，数据源: 中证指数官网）"""
