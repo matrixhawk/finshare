@@ -178,6 +178,7 @@ class IndexClient(BaseClient):
                 query_map = {
                     "000300": bs.query_hs300_stocks,
                     "000905": bs.query_zz500_stocks,
+                    "000016": bs.query_sz50_stocks,
                 }
                 query_fn = query_map.get(index_code)
                 if query_fn is None:
