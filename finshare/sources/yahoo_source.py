@@ -20,7 +20,7 @@ try:
     YFINANCE_AVAILABLE = True
 except ImportError:
     YFINANCE_AVAILABLE = False
-    logger.warning("yfinance 未安装，Yahoo Finance 数据源将不可用")
+    yf = None  # type: ignore
 
 
 class YahooFinanceDataSource(BaseDataSource):

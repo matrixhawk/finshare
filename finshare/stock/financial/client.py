@@ -203,7 +203,7 @@ class FinancialClient:
             ])
 
         try:
-            result = data.get("result", {})
+            result = data.get("result") or {}
             data_info = result.get("data", {})
             report_list = data_info.get("report_list", {})
 
@@ -310,7 +310,7 @@ class FinancialClient:
             ])
 
         try:
-            result = data.get("result", {})
+            result = data.get("result") or {}
             data_info = result.get("data", {})
             report_list = data_info.get("report_list", {})
 
@@ -401,7 +401,7 @@ class FinancialClient:
             ])
 
         try:
-            result = data.get("result", {})
+            result = data.get("result") or {}
             data_info = result.get("data", {})
             report_list = data_info.get("report_list", {})
 
@@ -494,8 +494,8 @@ class FinancialClient:
             ])
 
         try:
-            result = data.get("result", {})
-            data_list = result.get("data", [])
+            result = data.get("result") or {}
+            data_list = result.get("data") or []
 
             if not data_list:
                 return pd.DataFrame(columns=[
@@ -506,6 +506,8 @@ class FinancialClient:
 
             records = []
             for item in data_list:
+                if not isinstance(item, dict):
+                    continue
                 record = {
                     "fs_code": fs_code,
                     "ann_date": item.get("NOTICE_DATE", "")[:8].replace("-", "") if item.get("NOTICE_DATE") else "",
@@ -583,7 +585,7 @@ class FinancialClient:
             return pd.DataFrame(columns=empty_cols)
 
         try:
-            result = data.get("result", {})
+            result = data.get("result") or {}
             if not result:
                 return pd.DataFrame(columns=empty_cols)
 
@@ -593,6 +595,8 @@ class FinancialClient:
 
             records = []
             for item in data_list:
+                if not isinstance(item, dict):
+                    continue
                 ann_date = item.get("NOTICE_DATE") or item.get("PLAN_NOTICE_DATE") or ""
                 if ann_date:
                     ann_date = ann_date[:10].replace("-", "")

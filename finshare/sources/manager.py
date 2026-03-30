@@ -27,7 +27,6 @@ from finshare.sources.base_source import BaseDataSource
 from finshare.sources.tencent_source import TencentDataSource
 from finshare.sources.sina_source import SinaDataSource
 from finshare.sources.eastmoney_source import EastMoneyDataSource
-from finshare.sources.yahoo_source import YahooFinanceDataSource
 from finshare.logger import logger
 from finshare.config.settings import config
 
@@ -55,6 +54,17 @@ def _get_tdx_source():
         return None
 
 
+def _get_yahoo_source():
+    """获取 Yahoo Finance 数据源（延迟导入）"""
+    try:
+        from finshare.sources.yahoo_source import YahooFinanceDataSource
+
+        return YahooFinanceDataSource()
+    except ImportError as e:
+        logger.debug(f"Yahoo Finance 数据源不可用: {e}")
+        return None
+
+
 class DataSourceManager:
     """数据源管理器 - 管理实时快照数据获取"""
 
@@ -77,7 +87,7 @@ class DataSourceManager:
                 elif source_name == "eastmoney":
                     source = EastMoneyDataSource()
                 elif source_name == "yahoo":
-                    source = YahooFinanceDataSource()
+                    source = _get_yahoo_source()
                 elif source_name == "baostock":
                     source = _get_baostock_source()
                 elif source_name == "tdx":
