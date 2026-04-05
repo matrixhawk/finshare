@@ -465,6 +465,19 @@ class DataSourceManager:
                 logger.warning(f"{source_name} 获取证券列表失败: {e}")
                 self._record_source_failure(source_name, str(e))
 
+        # Last resort: Playwright web scraping
+        try:
+            from finshare.sources.playwright import is_available
+            if is_available():
+                from finshare.sources.playwright.eastmoney_scraper import EastMoneyStockListScraper
+                scraper = EastMoneyStockListScraper()
+                pw_result = scraper.fetch()
+                if pw_result:
+                    logger.info(f"[Manager] Playwright fallback stock_list: {len(pw_result)} stocks")
+                    return pw_result
+        except Exception as e:
+            logger.warning(f"[Manager] Playwright stock_list fallback failed: {e}")
+
         return []
 
     def get_etf_list(self, limit: int = 0) -> List[dict]:
@@ -483,6 +496,20 @@ class DataSourceManager:
             except Exception as e:
                 logger.warning(f"{source_name} 获取ETF列表失败: {e}")
                 self._record_source_failure(source_name, str(e))
+
+        # Last resort: Playwright web scraping
+        try:
+            from finshare.sources.playwright import is_available
+            if is_available():
+                from finshare.sources.playwright.etf_scraper import ETFListScraper
+                scraper = ETFListScraper()
+                pw_result = scraper.fetch()
+                if pw_result:
+                    logger.info(f"[Manager] Playwright fallback etf_list: {len(pw_result)} ETFs")
+                    return pw_result
+        except Exception as e:
+            logger.warning(f"[Manager] Playwright etf_list fallback failed: {e}")
+
         return []
 
     def get_lof_list(self, limit: int = 0) -> List[dict]:

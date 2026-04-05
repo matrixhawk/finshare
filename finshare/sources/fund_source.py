@@ -81,7 +81,21 @@ class FundDataSource(BaseDataSource):
 
         except Exception as e:
             logger.error(f"获取基金净值失败 {code}: {e}")
-            return []
+
+        # Playwright fallback
+        try:
+            from finshare.sources.playwright import is_available
+            if is_available():
+                from finshare.sources.playwright.fund_scraper import FundNavScraper
+                scraper = FundNavScraper()
+                pw_result = scraper.fetch(code)
+                if pw_result:
+                    logger.info(f"[FundSource] Playwright fallback fund_nav {code}: {len(pw_result)} records")
+                    return pw_result
+        except Exception as e:
+            logger.warning(f"[FundSource] Playwright fund_nav fallback failed: {e}")
+
+        return []
 
     def get_fund_info(self, code: str) -> Optional[dict]:
         """
