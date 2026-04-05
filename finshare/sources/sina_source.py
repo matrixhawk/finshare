@@ -11,9 +11,20 @@ import time
 from datetime import date, datetime
 from typing import List, Optional, Dict
 
+import requests
+import pandas as pd
+
 from finshare.sources.base_source import BaseDataSource
 from finshare.models.data_models import HistoricalData, SnapshotData, AdjustmentType, MarketType
 from finshare.logger import logger
+
+
+def _safe_float(val: str, default: float = 0.0) -> float:
+    """Convert string to float safely."""
+    try:
+        return float(str(val).replace("%", "").replace(",", ""))
+    except (ValueError, TypeError):
+        return default
 
 
 class SinaDataSource(BaseDataSource):
@@ -264,6 +275,77 @@ class SinaDataSource(BaseDataSource):
                 results[full_code] = snapshot
 
         return results
+
+    def get_concept_list(self) -> pd.DataFrame:
+        """获取新浪概念板块列表。"""
+        try:
+            resp = requests.get(
+                "https://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php",
+                headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn"},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return pd.DataFrame()
+            text = resp.text
+            # Sina returns JS variable assignments with arrays
+            items = re.findall(r'"([^"]+)","([^"]*)"', text)
+            if not items:
+                return pd.DataFrame()
+            records = []
+            for i in range(0, len(items), 2):
+                if i + 1 < len(items):
+                    name = items[i][0] if items[i] else ""
+                    pct = items[i][1] if items[i] else "0"
+                    if name:
+                        records.append({"board_name": name, "change_pct": _safe_float(pct)})
+            if not records:
+                # Fallback: try simpler pattern
+                simple_items = re.findall(r'\[?"([^"]{2,20}?)","(-?[\d.]+%?)"', text)
+                for name, pct in simple_items:
+                    records.append({"board_name": name, "change_pct": _safe_float(pct)})
+            return pd.DataFrame(records) if records else pd.DataFrame()
+        except Exception as e:
+            logger.warning(f"[SinaDataSource] get_concept_list failed: {e}")
+            return pd.DataFrame()
+
+    def get_minutely_data(self, code: str, start: str = None, end: str = None, freq: int = 5) -> pd.DataFrame:
+        """获取新浪分钟K线数据。"""
+        try:
+            sina_code = self._convert_code_format(code)
+            resp = requests.get(
+                "https://quotes.sina.cn/cn/api/jsonp.php/var/InnerExtensionService.getMinKLine",
+                params={"symbol": sina_code, "scale": str(freq), "datalen": "240"},
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return pd.DataFrame()
+            text = resp.text
+            # Parse JSONP: var="day,open,high,low,close,volume\n..."
+            match = re.search(r'="(.+)"', text, re.DOTALL)
+            if not match:
+                return pd.DataFrame()
+            csv_data = match.group(1)
+            lines = csv_data.strip().split("\\n")
+            if len(lines) < 2:
+                return pd.DataFrame()
+            records = []
+            for line in lines[1:]:  # skip header
+                parts = line.split(",")
+                if len(parts) < 6:
+                    continue
+                records.append({
+                    "trade_time": parts[0],
+                    "open": _safe_float(parts[1]),
+                    "high": _safe_float(parts[2]),
+                    "low": _safe_float(parts[3]),
+                    "close": _safe_float(parts[4]),
+                    "volume": _safe_float(parts[5]),
+                })
+            return pd.DataFrame(records)
+        except Exception as e:
+            logger.warning(f"[SinaDataSource] get_minutely_data failed: {e}")
+            return pd.DataFrame()
 
     def _convert_code_format(self, code: str) -> str:
         """转换代码格式为新浪API格式"""
