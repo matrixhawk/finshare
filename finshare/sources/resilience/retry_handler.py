@@ -1,9 +1,9 @@
 """
-请求重试处理器 - 指数退避重试机制
+请求重试处理器 - 快速失败重试机制
 
 特性:
-- 最大重试次数: 3次
-- 指数退避: 10s → 20s → 40s
+- 最大重试次数: 1次（快速放弃，让 Manager 切源）
+- 短延迟: 1s → 2s
 - 仅对临时性错误重试
 - 线程安全
 """
@@ -34,9 +34,9 @@ class RetryConfig:
 
     def __init__(
         self,
-        max_retries: int = 3,
-        base_delay: float = 10.0,
-        max_delay: float = 60.0,
+        max_retries: int = 1,
+        base_delay: float = 1.0,
+        max_delay: float = 3.0,
         backoff_factor: float = 2.0,
         jitter: float = 0.3,
     ):
@@ -207,9 +207,9 @@ def get_retry_handler() -> RetryHandler:
 
 # 便捷装饰器
 def retry(
-    max_retries: int = 3,
-    base_delay: float = 10.0,
-    max_delay: float = 60.0,
+    max_retries: int = 1,
+    base_delay: float = 1.0,
+    max_delay: float = 3.0,
 ):
     """
     重试装饰器

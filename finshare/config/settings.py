@@ -9,28 +9,28 @@ from typing import List
 
 
 class SmartCooldownConfig:
-    """智能冷却配置"""
+    """智能冷却配置 — 连接类错误快速恢复，服务端限制保持长冷却"""
 
     def __init__(self):
         # 冷却策略（秒）
-        self.cooldown_timeout = 30              # 超时错误
-        self.cooldown_connection_error = 60     # 连接错误
-        self.cooldown_rate_limit = 300        # 429限流 (5分钟)
-        self.cooldown_forbidden = 600         # 403禁止 (10分钟)
-        self.cooldown_service_unavailable = 300  # 503服务不可用 (5分钟)
-        self.cooldown_default = 300            # 默认冷却 (5分钟)
+        self.cooldown_timeout = 5               # 超时：5s 后重试
+        self.cooldown_connection_error = 10     # 连接错误：10s 后重试
+        self.cooldown_rate_limit = 120          # 429限流：2 分钟
+        self.cooldown_forbidden = 300           # 403禁止：5 分钟
+        self.cooldown_service_unavailable = 30  # 503不可用：30s
+        self.cooldown_default = 15              # 默认：15s
 
         # 连续失败累积
-        self.max_failure_multiplier = 5.0       # 最大累积倍率
+        self.max_failure_multiplier = 3.0       # 最大累积倍率
 
 
 class RetryConfig:
-    """重试配置"""
+    """重试配置 — 快速失败，让 Manager 切源"""
 
     def __init__(self):
-        self.max_retries = 3                   # 最大重试次数
-        self.retry_base_delay = 10.0           # 基础延迟（秒）
-        self.retry_max_delay = 60.0            # 最大延迟（秒）
+        self.max_retries = 1                   # 最多重试 1 次（快速放弃）
+        self.retry_base_delay = 1.0            # 基础延迟 1 秒
+        self.retry_max_delay = 3.0             # 最大延迟 3 秒
         self.retry_backoff_factor = 2.0        # 指数退避因子
 
 

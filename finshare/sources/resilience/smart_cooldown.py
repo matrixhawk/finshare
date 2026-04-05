@@ -23,13 +23,13 @@ from finshare.logger import logger
 
 @dataclass
 class CooldownConfig:
-    """冷却配置"""
-    timeout: int = 30              # 超时错误 (秒)
-    connection_error: int = 60     # 连接错误 (秒)
-    rate_limit_429: int = 300     # 429限流 (秒)
-    forbidden_403: int = 600      # 403禁止 (秒)
-    service_unavailable_503: int = 300  # 503服务不可用 (秒)
-    default: int = 300            # 默认冷却 (秒)
+    """冷却配置 — 连接类错误快速恢复，服务端限制保持长冷却"""
+    timeout: int = 5               # 超时：5s 后重试
+    connection_error: int = 10     # 连接错误：10s 后重试
+    rate_limit_429: int = 120      # 429限流：2 分钟
+    forbidden_403: int = 300       # 403禁止：5 分钟
+    service_unavailable_503: int = 30   # 503不可用：30s
+    default: int = 15              # 默认：15s
 
 
 @dataclass

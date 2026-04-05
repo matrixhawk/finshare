@@ -108,19 +108,43 @@ _get_lhb = None
 _get_lhb_detail = None
 _get_margin = None
 _get_margin_detail = None
+_get_block_trade = None
+_get_pledge_ratio = None
+_get_restricted_release = None
+_get_macro_pmi = None
+_get_macro_shibor = None
+_get_stock_news = None
+_get_stock_info = None
+_get_insider_trade = None
+_get_analyst_forecast = None
+_get_rating_change = None
 
 
 def _lazy_import_feature():
     """延迟导入特征数据模块"""
     global _get_money_flow, _get_money_flow_industry, _get_lhb, _get_lhb_detail, _get_margin, _get_margin_detail
+    global _get_block_trade, _get_pledge_ratio, _get_restricted_release
+    global _get_macro_pmi, _get_macro_shibor, _get_stock_news, _get_stock_info
+    global _get_insider_trade, _get_analyst_forecast, _get_rating_change
     if _get_money_flow is None:
         from finshare.stock.feature import moneyflow, lhb, margin
+        from finshare.stock.feature import alt_data
         _get_money_flow = moneyflow.get_money_flow
         _get_money_flow_industry = moneyflow.get_money_flow_industry
         _get_lhb = lhb.get_lhb
         _get_lhb_detail = lhb.get_lhb_detail
         _get_margin = margin.get_margin
         _get_margin_detail = margin.get_margin_detail
+        _get_block_trade = alt_data.get_block_trade
+        _get_pledge_ratio = alt_data.get_pledge_ratio
+        _get_restricted_release = alt_data.get_restricted_release
+        _get_macro_pmi = alt_data.get_macro_pmi
+        _get_macro_shibor = alt_data.get_macro_shibor
+        _get_stock_news = alt_data.get_stock_news
+        _get_stock_info = alt_data.get_stock_info
+        _get_insider_trade = alt_data.get_insider_trade
+        _get_analyst_forecast = alt_data.get_analyst_forecast
+        _get_rating_change = alt_data.get_rating_change
 
 
 # 特征数据接口
@@ -200,6 +224,67 @@ def get_margin_detail(code: str, trade_date=None):
     """
     _lazy_import_feature()
     return _get_margin_detail(code, trade_date)
+
+
+
+def get_block_trade(start_date: str = None, end_date: str = None):
+    """获取大宗交易"""
+    _lazy_import_feature()
+    return _get_block_trade(start_date, end_date)
+
+
+def get_pledge_ratio(date: str = None):
+    """获取股权质押比例"""
+    _lazy_import_feature()
+    return _get_pledge_ratio(date)
+
+
+def get_restricted_release(code: str = None):
+    """获取限售解禁"""
+    _lazy_import_feature()
+    return _get_restricted_release(code)
+
+
+def get_macro_pmi():
+    """获取中国 PMI"""
+    _lazy_import_feature()
+    return _get_macro_pmi()
+
+
+def get_macro_shibor():
+    """获取 SHIBOR 利率"""
+    _lazy_import_feature()
+    return _get_macro_shibor()
+
+
+def get_stock_news(code: str, count: int = 100):
+    """获取个股新闻"""
+    _lazy_import_feature()
+    return _get_stock_news(code, count)
+
+
+def get_stock_info(code: str):
+    """获取个股基本信息"""
+    _lazy_import_feature()
+    return _get_stock_info(code)
+
+
+def get_insider_trade():
+    """获取高管增减持"""
+    _lazy_import_feature()
+    return _get_insider_trade()
+
+
+def get_analyst_forecast(code: str):
+    """获取分析师盈利预测"""
+    _lazy_import_feature()
+    return _get_analyst_forecast(code)
+
+
+def get_rating_change(date: str = None):
+    """获取机构评级变动"""
+    _lazy_import_feature()
+    return _get_rating_change(date)
 
 
 # K线数据接口
@@ -718,6 +803,16 @@ __all__ = [
     "get_lhb_detail",
     "get_margin",
     "get_margin_detail",
+    "get_block_trade",
+    "get_pledge_ratio",
+    "get_restricted_release",
+    "get_macro_pmi",
+    "get_macro_shibor",
+    "get_stock_news",
+    "get_stock_info",
+    "get_insider_trade",
+    "get_analyst_forecast",
+    "get_rating_change",
     # K线数据
     "get_historical_data",
     "get_snapshot_data",

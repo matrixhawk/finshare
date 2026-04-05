@@ -361,9 +361,16 @@ class DataSourceManager:
         return True
 
     def _record_source_failure(self, source_name: str, error_msg: str):
-        """记录数据源失败（直接进入24小时冷却）"""
-        cooldown_hours = config.data_source.failure_cooldown_hours
-        cool_down_until = datetime.now() + timedelta(hours=cooldown_hours)
+        """记录数据源失败 — 短暂冷却后自动恢复，立即切换到下一个源"""
+        error_lower = error_msg.lower()
+        if "429" in error_lower or "rate" in error_lower:
+            cooldown_seconds = 120   # 限流: 2 分钟
+        elif "403" in error_lower or "forbidden" in error_lower:
+            cooldown_seconds = 300   # 被封: 5 分钟
+        else:
+            cooldown_seconds = 30    # 连接/超时/其他: 30 秒
+
+        cool_down_until = datetime.now() + timedelta(seconds=cooldown_seconds)
 
         self.source_status[source_name] = {
             "last_failure": datetime.now(),
@@ -372,8 +379,8 @@ class DataSourceManager:
         }
 
         logger.warning(
-            f"数据源 {source_name} 请求失败: {error_msg}，"
-            f"进入{cooldown_hours}小时冷却，将切换到其他数据源"
+            f"数据源 {source_name} 失败: {error_msg[:80]}，"
+            f"冷却 {cooldown_seconds}s，切换到其他源"
         )
 
     def reset_source_status(self, source_name: str = None):
@@ -422,9 +429,10 @@ class DataSourceManager:
         return None
 
     def get_stock_list(self, market: str = "all", limit: int = 0) -> List[dict]:
-        """获取证券列表（多源容灾）
+        """获取证券列表（多源容灾，每个源限时 10 秒）
 
         按数据源优先级依次尝试，第一个成功的返回。
+        单个源超时 10 秒后立即切换下一个，避免启动阻塞。
 
         Args:
             market: 市场类型 (all/sh/sz)
@@ -433,6 +441,8 @@ class DataSourceManager:
         Returns:
             股票列表
         """
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
         for source_name in config.data_source.source_priority:
             if not self._is_source_available(source_name):
                 continue
@@ -442,10 +452,15 @@ class DataSourceManager:
                 continue
 
             try:
-                result = source.get_stock_list(market, limit)
-                if result:
-                    logger.info(f"证券列表从 {source_name} 获取: {len(result)} 只")
-                    return result
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(source.get_stock_list, market, limit)
+                    result = future.result(timeout=10)
+                    if result:
+                        logger.info(f"证券列表从 {source_name} 获取: {len(result)} 只")
+                        return result
+            except FuturesTimeout:
+                logger.warning(f"{source_name} 获取证券列表超时(10s)，切换下一个源")
+                self._record_source_failure(source_name, "stock_list timeout 10s")
             except Exception as e:
                 logger.warning(f"{source_name} 获取证券列表失败: {e}")
                 self._record_source_failure(source_name, str(e))
