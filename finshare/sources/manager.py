@@ -29,6 +29,8 @@ from finshare.sources.sina_source import SinaDataSource
 from finshare.sources.eastmoney_source import EastMoneyDataSource
 from finshare.logger import logger
 from finshare.config.settings import config
+from finshare.sources.resilience.smart_router import get_router, DataType
+from finshare.metrics import CollectMetrics, get_metrics_recorder
 
 
 # 延迟导入新数据源，避免依赖问题
@@ -71,6 +73,8 @@ class DataSourceManager:
     def __init__(self):
         self.sources = self._initialize_sources()
         self.source_status = {}
+        self._playwright_sources: dict = {}
+        self._init_playwright_sources()
 
     def _initialize_sources(self) -> Dict[str, BaseDataSource]:
         """初始化数据源"""
@@ -108,6 +112,108 @@ class DataSourceManager:
                 logger.warning(f"初始化数据源 {source_name} 失败: {e}")
 
         return sources
+
+    def _init_playwright_sources(self):
+        """Lazily initialize Playwright sources (only if playwright is installed)."""
+        try:
+            from finshare.sources.playwright import is_available
+            if is_available():
+                from finshare.sources.playwright_source import PlaywrightEastMoneySource, PlaywrightSinaSource
+                self._playwright_sources["playwright_eastmoney"] = PlaywrightEastMoneySource()
+                self._playwright_sources["playwright_sina"] = PlaywrightSinaSource()
+        except ImportError:
+            pass
+
+    def _tiered_request(
+        self,
+        data_type: DataType,
+        method_name: str,
+        args: tuple = (),
+        kwargs: dict | None = None,
+        collector_name: str = "",
+    ) -> pd.DataFrame | None:
+        """分层请求：先试 api 层所有源，全部失败后降级到 scraper 层。"""
+        if kwargs is None:
+            kwargs = {}
+
+        router = get_router()
+        api_prefs, scraper_prefs = router.get_tiered_sources(data_type)
+        fallback_count = 0
+        start_time = time.monotonic()
+
+        # Phase 1: try api-tier sources
+        for pref in api_prefs:
+            source_name = pref.source.value if hasattr(pref.source, "value") else str(pref.source)
+            source = self.sources.get(source_name)
+            if not source or not hasattr(source, method_name):
+                continue
+            if not self._is_source_available(source_name):
+                fallback_count += 1
+                continue
+            try:
+                result = getattr(source, method_name)(*args, **kwargs)
+                if result is not None and (not isinstance(result, pd.DataFrame) or len(result) > 0):
+                    self._record_tiered_metrics(
+                        collector_name, source_name, "api", start_time, result, True, "", fallback_count
+                    )
+                    return result
+            except Exception as e:
+                logger.warning(f"[tiered_request] {source_name}.{method_name} 失败: {e}")
+                self._record_source_failure(source_name, str(e))
+                fallback_count += 1
+
+        # Phase 2: try scraper-tier sources
+        for pref in scraper_prefs:
+            source_name = pref.source.value if hasattr(pref.source, "value") else str(pref.source)
+            source = self._playwright_sources.get(source_name)
+            if not source or not hasattr(source, method_name):
+                continue
+            if hasattr(source, "is_available") and not source.is_available():
+                continue
+            try:
+                logger.info(f"[tiered_request] 降级到 scraper: {source_name}.{method_name}")
+                result = getattr(source, method_name)(*args, **kwargs)
+                if result is not None and (not isinstance(result, pd.DataFrame) or len(result) > 0):
+                    self._record_tiered_metrics(
+                        collector_name, source_name, "scraper", start_time, result, True, "", fallback_count
+                    )
+                    return result
+            except Exception as e:
+                logger.warning(f"[tiered_request] scraper {source_name}.{method_name} 失败: {e}")
+                fallback_count += 1
+
+        # All failed
+        self._record_tiered_metrics(
+            collector_name, "", "", start_time, None, False, "all sources failed", fallback_count
+        )
+        return None
+
+    def _record_tiered_metrics(
+        self,
+        collector_name: str,
+        source_used: str,
+        source_tier: str,
+        start_time: float,
+        result,
+        success: bool,
+        error_message: str,
+        fallback_count: int,
+    ) -> None:
+        if not collector_name:
+            return
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        records_count = len(result) if result is not None and hasattr(result, "__len__") else 0
+        metrics = CollectMetrics(
+            collector_name=collector_name,
+            source_used=source_used,
+            source_tier=source_tier,
+            duration_ms=duration_ms,
+            records_count=records_count,
+            success=success,
+            error_message=error_message,
+            fallback_count=fallback_count,
+        )
+        get_metrics_recorder().record(metrics)
 
     def get_snapshot_data(self, code: str) -> Optional[SnapshotData]:
         """获取快照数据（自动选择数据源）"""
